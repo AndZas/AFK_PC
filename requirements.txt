@@ -1,0 +1,10 @@
+PyMonCtl~=0.92
+PyWinBox~=0.7
+pywin32~=309
+typing_extensions~=4.12.2
+PyGetWindow~=0.0.9
+pystray~=0.19.5
+PyWinCtl~=0.4.1
+pillow~=11.1.0
+customtkinter
+pypiwin32
