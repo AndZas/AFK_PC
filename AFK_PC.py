@@ -1,14 +1,10 @@
 import configparser
 import ctypes
 import os
-import re
 import sys
-import threading
-import time
 
 import win32con
 import win32gui
-from PIL import Image
 
 AFK_TIME = 120
 ONLINE_CHECK_INTERVAL = 5
@@ -70,7 +66,8 @@ def is_exception_application():
 
 
 def is_watching_video():
-    return (not any(keyword in re.split('[-—]', get_active_window_title())[0] for keyword in
+    from re import split
+    return (not any(keyword in split('[-—]', get_active_window_title())[0] for keyword in
                     ['YouTube', 'youtube', 'Twitch', 'twitch']) and
             any(keyword in get_active_window_title() for keyword in ['YouTube', 'youtube', 'Twitch', 'twitch']))
 
@@ -142,6 +139,7 @@ def settings():
             ONLINE_CHECK_INTERVAL = on_check_intervals[on_check_interval_cmb.get()]
             OFFLINE_CHECK_INTERVAL = off_check_intervals[off_check_interval_cmb.get()]
             PAUSE_CHECK_INTERVAL = pause_check_intervals[pause_check_interval_cmb.get()]
+            EXCEPTION_APPS = exception_apps_widgets
             AUTO_START = int(auto_start_var.get())
             save_settings()
 
@@ -155,9 +153,48 @@ def settings():
 
         window.destroy()
 
+    def add_exception_application(name=None):
+        def delete_exception_application(_frame, _name):
+            _frame.destroy()
+            exception_apps_widgets.remove(_name)
+
+        if name:
+            frame = ctk.CTkFrame(exception_apps_frame, fg_color="#333333", corner_radius=8)
+            frame.pack(fill='x', pady=10, padx=10)
+
+            label = ctk.CTkLabel(frame, text=[name[:35] + "..." if len(name) > 35 else name][0])
+            label.pack(side="left", padx=5, pady=5)
+
+            delete_button = ctk.CTkButton(frame, text="X", width=28,
+                                          command=lambda: delete_exception_application(frame, name))
+            delete_button.pack(side="right", padx=5, pady=5)
+
+        else:
+            name = exception_apps_cmb.get()
+            if name and name not in exception_apps_widgets:
+                frame = ctk.CTkFrame(exception_apps_frame, fg_color="#333333", corner_radius=8)
+                frame.pack(fill='x', pady=10, padx=10)
+
+                label = ctk.CTkLabel(frame, text=[name[:35] + "..." if len(name) > 35 else name][0])
+                label.pack(side="left", padx=5, pady=5)
+
+                delete_button = ctk.CTkButton(frame, text="X", width=28,
+                                              command=lambda: delete_exception_application(frame, name))
+                delete_button.pack(side="right", padx=5, pady=5)
+
+                exception_apps_widgets.append(name)
+
+    open_applications_names = [str(win32gui.GetWindowText(i)) for i in get_open_windows()]
+    if "Окно переполнения области задач." in open_applications_names:
+        open_applications_names.remove('Окно переполнения области задач.')
+    if "Program Manager" in open_applications_names:
+        open_applications_names.remove('Program Manager')
+
+    exception_apps_widgets = EXCEPTION_APPS
+
     window = ctk.CTk()
     window.title("Настройки")
-    window.geometry("380x285")
+    window.geometry("380x610")
 
     afk_time_label = ctk.CTkLabel(window, text="Время бездействия (сек):")
     afk_time_label.grid(row=0, column=0, padx=10, pady=10, sticky='w')
@@ -193,11 +230,28 @@ def settings():
     auto_start_cb = ctk.CTkCheckBox(window, text="Запуск с Windows", variable=auto_start_var)
     auto_start_cb.grid(row=4, column=0, padx=10, pady=10, sticky='w')
 
+    exception_apps_label = ctk.CTkLabel(window, text="Приложения исключения:")
+    exception_apps_label.grid(row=5, column=0, columnspan=2, padx=10, pady=10, sticky='w')
+
+    exception_apps_cmb = ctk.CTkComboBox(window, values=open_applications_names)
+    exception_apps_cmb.grid(row=6, column=0, padx=10, pady=10, sticky='w')
+
+    exception_apps_button = ctk.CTkButton(window, text="Добавить", command=add_exception_application)
+    exception_apps_button.grid(row=6, column=1, padx=10, pady=10, sticky='w')
+
+    exception_apps_frame = ctk.CTkScrollableFrame(window)
+    exception_apps_frame.grid(row=7, column=0, columnspan=2, padx=10, pady=10, sticky='ew')
+
     save_button = ctk.CTkButton(window, text="Сохранить", command=save_close)
-    save_button.grid(row=5, column=0, padx=10, pady=10, sticky='w')
+    save_button.grid(row=8, column=0, padx=10, pady=10, sticky='w')
 
     quit_button = ctk.CTkButton(window, text="Отмена", command=window.destroy)
-    quit_button.grid(row=5, column=1, padx=10, pady=10, sticky='w')
+    quit_button.grid(row=8, column=1, padx=10, pady=10, sticky='w')
+
+    if '' in exception_apps_widgets:
+        exception_apps_widgets.remove('')
+    for exc in exception_apps_widgets:
+        add_exception_application(exc)
 
     window.mainloop()
 
@@ -214,7 +268,8 @@ def exit_program(tray):
 
 def tray_setup():
     from pystray import MenuItem, Icon
-    image = Image.new("RGB", (64, 64), (0, 255, 0))
+    from PIL import Image
+    image = Image.new("RGB", (64, 64), (255, 0, 0))
     menu = (
         MenuItem('Настройки', settings),
         MenuItem('Пауза', pause),
@@ -225,28 +280,30 @@ def tray_setup():
 
 
 def mainloop():
+    from time import sleep
     global PAUSED, AFK
 
     while True:
         if PAUSED:
-            time.sleep(PAUSE_CHECK_INTERVAL)
+            sleep(PAUSE_CHECK_INTERVAL)
             continue
 
         if get_afk_time() >= AFK_TIME and not is_watching_video() and not is_exception_application():
             if not AFK:
                 minimize_windows()
                 AFK = True
-            time.sleep(OFFLINE_CHECK_INTERVAL)
+            sleep(OFFLINE_CHECK_INTERVAL)
         else:
             if AFK:
                 maximize_windows()
                 AFK = False
-            time.sleep(ONLINE_CHECK_INTERVAL)
+            sleep(ONLINE_CHECK_INTERVAL)
 
 
 def main():
+    from threading import Thread
     load_settings()
-    threading.Thread(target=mainloop, daemon=True).start()
+    Thread(target=mainloop, daemon=True).start()
     tray_setup()
 
 
